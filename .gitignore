@@ -1,0 +1,29 @@
+# Environment (contains API keys)
+.env
+
+# Node.js
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+
+# Test outputs
+coverage/
+.nyc_output/
+test-results/
+validation-results/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache/
+*.tsbuildinfo
