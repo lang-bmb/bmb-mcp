@@ -1,6 +1,13 @@
 # Environment (contains API keys)
 .env
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
 # Node.js
 node_modules/
 dist/
