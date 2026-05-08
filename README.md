@@ -4,11 +4,11 @@
 
 Chatter enables AI models to generate high-quality BMB code by providing real-time access to language specifications, compilation feedback, and contract verification.
 
-> **Implementation status (2026-05-01, Cycle 2524):** Python scaffold lives in `chatter/`. Node.js packaging in this README is the original design — superseded by the Python implementation while M2 Track N matures. Current capabilities:
-> - ✅ Tool: `bmb_check` (subprocess to `bmb check`)
-> - ⏳ Tools: `bmb_verify`, `bmb_compile`, `bmb_test`, `bmb_example`, `bmb_spec_lookup`, `bmb_from_rust`
-> - ⏳ Resources: `bmb://spec/*`, `bmb://examples/*`, `bmb://stdlib/*`
-> - ⏳ Prompts: `bmb_implement`, `bmb_add_contracts`, `bmb_optimize`
+> **Implementation status (2026-05-09, Cycles 2524–2548):** Python scaffold in `chatter/`. 35/35 pytest passing.
+> - ✅ Tools: `bmb_check`, `bmb_verify`, `bmb_spec_lookup`, `bmb_lint`, `bmb_lint_explain`, `bmb_example`
+> - ✅ Resources: `bmb://spec/full`, `bmb://spec/quick-reference`, `bmb://spec/rust-diff`
+> - ✅ Prompts: `bmb_implement`, `bmb_add_contracts`, `bmb_optimize`
+> - ⏳ Tools (deferred — require native toolchain): `bmb_compile`, `bmb_test`, `bmb_from_rust`
 >
 > Long-term (M3+) the implementation moves to BMB itself per the Rule 6 BMB-rewrite policy. The Python layer is intentionally thin to keep that port small.
 
@@ -57,33 +57,35 @@ Instead of stuffing the entire specification into every prompt (~15K tokens), Ch
 
 ### Tools
 
-| Tool | Description |
-|------|-------------|
-| `bmb_spec_lookup` | Query language specification by topic |
-| `bmb_check` | Type-check code without full compilation |
-| `bmb_verify` | Verify contracts using Z3 solver |
-| `bmb_compile` | Compile to native executable |
-| `bmb_example` | Get example code for patterns/concepts |
-| `bmb_from_rust` | Convert Rust code to BMB with contract suggestions |
-| `bmb_test` | Run test cases against BMB code |
+| Tool | Status | Description |
+|------|--------|-------------|
+| `bmb_check` | ✅ | Type-check code without full compilation |
+| `bmb_verify` | ✅ | Verify contracts using Z3 solver |
+| `bmb_spec_lookup` | ✅ | Search language specification by topic keyword |
+| `bmb_lint` | ✅ | Run style/convention linter, returns JSON warnings |
+| `bmb_lint_explain` | ✅ | Lint with AI-friendly explanations and fix suggestions |
+| `bmb_example` | ✅ | Get example code from tutorials by concept keyword |
+| `bmb_compile` | ⏳ | Compile to native executable (requires LLVM toolchain) |
+| `bmb_test` | ⏳ | Run test cases against BMB code |
+| `bmb_from_rust` | ⏳ | Convert Rust code to BMB with contract suggestions |
 
 ### Resources
 
-| URI | Description |
-|-----|-------------|
-| `bmb://spec/full` | Complete language specification |
-| `bmb://spec/quick-reference` | Cheatsheet for common patterns |
-| `bmb://spec/rust-diff` | BMB vs Rust differences |
-| `bmb://examples/{category}` | Example code by category |
-| `bmb://stdlib/{module}` | Standard library documentation |
+| URI | Status | Description |
+|-----|--------|-------------|
+| `bmb://spec/full` | ✅ | Complete language specification (docs/SPECIFICATION.md) |
+| `bmb://spec/quick-reference` | ✅ | Cheatsheet: syntax, contracts, gotchas, stdlib |
+| `bmb://spec/rust-diff` | ✅ | BMB vs Rust: philosophy, syntax, memory model |
+| `bmb://examples/{category}` | ⏳ | Example code by category |
+| `bmb://stdlib/{module}` | ⏳ | Standard library documentation |
 
 ### Prompts
 
-| Prompt | Description |
-|--------|-------------|
-| `bmb_implement` | Implement a function with contracts |
-| `bmb_add_contracts` | Add contracts to existing code |
-| `bmb_optimize` | Optimize code for performance |
+| Prompt | Status | Description |
+|--------|--------|-------------|
+| `bmb_implement` | ✅ | Implement a function with optional contracts |
+| `bmb_add_contracts` | ✅ | Add pre/post contracts to existing code |
+| `bmb_optimize` | ✅ | Optimize code for speed or size |
 
 ---
 

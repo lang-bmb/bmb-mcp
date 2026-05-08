@@ -70,6 +70,16 @@ def find_bmb_binary() -> Path:
     )
 
 
+def find_repo_root() -> Path | None:
+    """Locate the BMB repository root (directory containing Cargo.toml).
+    Returns None if not found."""
+    here = Path(__file__).resolve()
+    for ancestor in here.parents:
+        if (ancestor / "Cargo.toml").is_file():
+            return ancestor
+    return None
+
+
 def run_bmb(args: list[str], *, cwd: Path | None = None, timeout: float = 30.0) -> BmbResult:
     """Invoke `bmb <args>` and capture stdout/stderr. The default output
     format is machine-friendly (CLAUDE.md Rule 8) — callers requesting
