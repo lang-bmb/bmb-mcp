@@ -4,7 +4,7 @@ Implements Track N Phase 2 tools, resources, and prompts per README.md:
 
   - tools:     bmb_check, bmb_verify, bmb_spec_lookup, bmb_lint, bmb_example,
                bmb_lint_explain (Track Q: AI-friendly lint explanations),
-               bmb_lint_native (Track Q Phase 2: BMB-native pattern-based lint),
+               bmb_lint_native (Track Q Phase 2+3: BMB-native pattern-based lint, 7 checks),
                bmb_compile, bmb_test, bmb_from_rust (Track N Phase 2d)
   - resources: bmb://spec/full, bmb://spec/quick-reference, bmb://spec/rust-diff
   - prompts:   bmb_implement, bmb_add_contracts, bmb_optimize
@@ -694,7 +694,7 @@ def bmb_lint_explain(source: str, filename: str = "snippet.bmb") -> dict:
 def bmb_lint_native(source: str, filename: str = "snippet.bmb") -> dict:
     """Run the BMB-native lint tool (bootstrap/lint/lint.exe) on a source snippet.
 
-    This is the Track Q Phase 2 BMB-native lint implementation. It runs
+    This is the Track Q Phase 2+3 BMB-native lint implementation. It runs
     pattern-based checks without a full parse step, making it fast and
     suitable for AI-generated code review workflows.
 
@@ -704,6 +704,8 @@ def bmb_lint_native(source: str, filename: str = "snippet.bmb") -> dict:
         negated_if_condition   — `if not(...)` patterns (prefer positive form)
         redundant_bool_compare — `== true` / `== false` patterns
         chained_comparison     — 3+ or-linked equality comparisons (suggest match)
+        todo_comment           — // TODO or // FIXME (incomplete implementation)
+        missing_pre_index      — pub fn with idx/index param but no pre bounds clause
 
     Args:
         source: BMB source code as a string.

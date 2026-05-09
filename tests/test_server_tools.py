@@ -357,6 +357,38 @@ def test_bmb_lint_native_count_matches_warnings():
     assert result["count"] == len(result["warnings"])
 
 
+def test_bmb_lint_native_detects_todo_comment():
+    source = "// TODO: implement this\nfn main() -> i64 = 0;\n"
+    result = bmb_lint_native(source)
+    assert result["ok"]
+    kinds = [w["kind"] for w in result["warnings"]]
+    assert "todo_comment" in kinds
+
+
+def test_bmb_lint_native_no_todo_clean():
+    source = "fn main() -> i64 = 0;\n"
+    result = bmb_lint_native(source)
+    assert result["ok"]
+    kinds = [w["kind"] for w in result["warnings"]]
+    assert "todo_comment" not in kinds
+
+
+def test_bmb_lint_native_detects_missing_pre_index():
+    source = "pub fn get(idx: i64, s: String) -> i64\n    = s.byte_at(idx);\n"
+    result = bmb_lint_native(source)
+    assert result["ok"]
+    kinds = [w["kind"] for w in result["warnings"]]
+    assert "missing_pre_index" in kinds
+
+
+def test_bmb_lint_native_pre_suppresses_missing_pre_index():
+    source = "pub fn get(idx: i64, s: String) -> i64\npre idx >= 0 and idx < s.len()\n    = s.byte_at(idx);\n"
+    result = bmb_lint_native(source)
+    assert result["ok"]
+    kinds = [w["kind"] for w in result["warnings"]]
+    assert "missing_pre_index" not in kinds
+
+
 # ---------------------------------------------------------------------------
 # bmb_ir
 # ---------------------------------------------------------------------------
