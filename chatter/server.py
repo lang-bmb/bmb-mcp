@@ -197,6 +197,43 @@ def bmb_example(concept: str, max_examples: int = 2) -> dict:
 
 
 @mcp.tool()
+def bmb_ir(source: str, filename: str = "snippet.bmb") -> dict:
+    """Emit the LLVM IR generated from a BMB source snippet.
+
+    Runs 'bmb build --emit-ir' and returns the raw LLVM IR text.
+    Useful for understanding how BMB code maps to machine instructions,
+    verifying that contracts eliminate bounds checks, and debugging
+    optimization issues.
+
+    Args:
+        source: BMB source code as a string.
+        filename: Display name for the temporary source file (default: snippet.bmb).
+
+    Returns a dict with keys:
+        ok: bool — True if IR was generated successfully
+        ir: LLVM IR as a string (empty if compilation failed)
+        stderr: any error stream content
+        returncode: bmb exit code
+    """
+    stem = Path(filename).stem
+    with tempfile.TemporaryDirectory(prefix="chatter-ir-") as tmp:
+        src_path = Path(tmp) / filename
+        ir_path = Path(tmp) / (stem + ".ll")
+        src_path.write_text(source, encoding="utf-8")
+        result = run_bmb(
+            ["build", str(src_path), "--emit-ir", "-o", str(ir_path)],
+            timeout=60.0,
+        )
+        ir_text = ir_path.read_text(encoding="utf-8") if ir_path.is_file() else ""
+    return {
+        "ok": result.ok and bool(ir_text),
+        "ir": ir_text,
+        "stderr": result.stderr,
+        "returncode": result.returncode,
+    }
+
+
+@mcp.tool()
 def bmb_run(source: str, filename: str = "snippet.bmb", stdin: str = "") -> dict:
     """Run a BMB source snippet using the tree-walking interpreter.
 

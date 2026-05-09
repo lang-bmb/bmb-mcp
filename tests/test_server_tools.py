@@ -13,6 +13,7 @@ from chatter.server import (
     bmb_check,
     bmb_compile,
     bmb_context_pack,
+    bmb_ir,
     bmb_run,
     bmb_test,
     bmb_from_rust,
@@ -292,6 +293,41 @@ def test_bmb_lint_explain_invalid_code():
     result = bmb_lint_explain("this is not valid bmb!!!\n")
     assert not result["ok"]
     assert result["count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# bmb_ir
+# ---------------------------------------------------------------------------
+
+
+def test_bmb_ir_returns_dict():
+    result = bmb_ir("fn add(a: i64, b: i64) -> i64 = a + b;\n")
+    assert isinstance(result, dict)
+    assert set(result.keys()) >= {"ok", "ir", "stderr", "returncode"}
+
+
+def test_bmb_ir_valid_source_succeeds():
+    result = bmb_ir("fn add(a: i64, b: i64) -> i64 = a + b;\n")
+    assert result["ok"]
+    assert len(result["ir"]) > 100  # meaningful IR content
+
+
+def test_bmb_ir_contains_llvm_ir():
+    result = bmb_ir("fn add(a: i64, b: i64) -> i64 = a + b;\n")
+    assert result["ok"]
+    # LLVM IR should contain target triple or define keyword
+    assert "define" in result["ir"] or "target" in result["ir"]
+
+
+def test_bmb_ir_invalid_source_fails():
+    result = bmb_ir("fn add() -> i64 = undefined_var;\n")
+    assert not result["ok"]
+
+
+def test_bmb_ir_syntax_error_fails():
+    result = bmb_ir("this is not valid bmb!!!\n")
+    assert not result["ok"]
+    assert result["ir"] == ""
 
 
 # ---------------------------------------------------------------------------

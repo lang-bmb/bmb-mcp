@@ -4,8 +4,8 @@
 
 Chatter enables AI models to generate high-quality BMB code by providing real-time access to language specifications, compilation feedback, and contract verification.
 
-> **Implementation status (2026-05-09, Cycles 2524–2554):** Python scaffold in `chatter/`. 69/69 pytest passing.
-> - ✅ Tools (11): `bmb_check`, `bmb_run`, `bmb_verify`, `bmb_spec_lookup`, `bmb_lint`, `bmb_lint_explain`, `bmb_example`, `bmb_compile`, `bmb_test`, `bmb_from_rust`, `bmb_context_pack`
+> **Implementation status (2026-05-09, Cycles 2524–2556):** Python scaffold in `chatter/`. 74/74 pytest passing.
+> - ✅ Tools (12): `bmb_check`, `bmb_ir`, `bmb_run`, `bmb_verify`, `bmb_spec_lookup`, `bmb_lint`, `bmb_lint_explain`, `bmb_example`, `bmb_compile`, `bmb_test`, `bmb_from_rust`, `bmb_context_pack`
 > - ✅ Resources (4): `bmb://spec/full`, `bmb://spec/quick-reference`, `bmb://spec/rust-diff`, `bmb://context/stdlib`
 > - ✅ Prompts: `bmb_implement`, `bmb_add_contracts`, `bmb_optimize`
 >
@@ -64,6 +64,7 @@ Instead of stuffing the entire specification into every prompt (~15K tokens), Ch
 | `bmb_lint` | ✅ | Run style/convention linter, returns JSON warnings |
 | `bmb_lint_explain` | ✅ | Lint with AI-friendly explanations and fix suggestions |
 | `bmb_example` | ✅ | Get example code from tutorials by concept keyword |
+| `bmb_ir` | ✅ | Emit LLVM IR for a source snippet (debug/optimization analysis) |
 | `bmb_run` | ✅ | Run code with tree-walking interpreter (no LLVM required) |
 | `bmb_compile` | ✅ | Compile to native executable (requires LLVM toolchain) |
 | `bmb_test` | ✅ | Run test cases against BMB code |
