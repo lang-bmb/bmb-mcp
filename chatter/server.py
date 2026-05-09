@@ -651,6 +651,13 @@ _LINT_EXPLANATIONS: dict[str, tuple[str, str]] = {
         "Implement the function body, or if the no-op is intentional, add a comment "
         "explaining why the block is empty.",
     ),
+    "double_negation": (
+        "`not(not(expr))` is logically equivalent to `expr` and adds unnecessary negation overhead. "
+        "Double negation is often introduced by automated refactoring or copy-paste, "
+        "and prevents the compiler from emitting the simplest boolean expression.",
+        "Replace `not(not(expr))` with `expr` directly. "
+        "If the double negation is used to coerce a value to bool, use an explicit boolean cast instead.",
+    ),
 }
 
 
@@ -722,6 +729,7 @@ def bmb_lint_native(source: str, filename: str = "snippet.bmb") -> dict:
         missing_pre_index        — pub fn with idx/index param but no pre bounds clause
         redundant_if_expression  — `if cond { true } else { false }` single-line (Cycle 2579)
         empty_block              — `{ }` or `{ () }` placeholder body (Cycle 2579)
+        double_negation          — `not(not(expr))` redundant double negation (Cycle 2587)
 
     Args:
         source: BMB source code as a string.

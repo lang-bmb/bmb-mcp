@@ -303,10 +303,13 @@ def test_bmb_lint_explain_explanations_dict_covers_new_kinds():
     from chatter.server import _LINT_EXPLANATIONS
     assert "redundant_if_expression" in _LINT_EXPLANATIONS
     assert "empty_block" in _LINT_EXPLANATIONS
+    assert "double_negation" in _LINT_EXPLANATIONS
     r_exp, r_fix = _LINT_EXPLANATIONS["redundant_if_expression"]
     assert len(r_exp) > 20 and len(r_fix) > 20
     e_exp, e_fix = _LINT_EXPLANATIONS["empty_block"]
     assert len(e_exp) > 20 and len(e_fix) > 20
+    d_exp, d_fix = _LINT_EXPLANATIONS["double_negation"]
+    assert len(d_exp) > 20 and len(d_fix) > 20
 
 
 # ---------------------------------------------------------------------------
@@ -416,6 +419,14 @@ def test_bmb_lint_native_detects_empty_block():
     assert result["ok"]
     kinds = [w["kind"] for w in result["warnings"]]
     assert "empty_block" in kinds
+
+
+def test_bmb_lint_native_detects_double_negation():
+    source = "fn is_valid(x: bool) -> bool = not(not(x));\n"
+    result = bmb_lint_native(source)
+    assert result["ok"]
+    kinds = [w["kind"] for w in result["warnings"]]
+    assert "double_negation" in kinds
 
 
 # ---------------------------------------------------------------------------
