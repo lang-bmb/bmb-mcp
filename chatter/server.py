@@ -637,6 +637,20 @@ _LINT_EXPLANATIONS: dict[str, tuple[str, str]] = {
         "Capture the return value with `let _name = expr;` if it is intentionally discarded, "
         "or assign it to a meaningful variable if it should be used.",
     ),
+    "redundant_if_expression": (
+        "An if-expression that returns `true` in one branch and `false` in the other "
+        "is just the condition itself. The extra if/else adds noise and prevents the compiler "
+        "from emitting a direct branch-free boolean result.",
+        "Replace `if cond { true } else { false }` with `cond`, "
+        "and `if cond { false } else { true }` with `not cond`.",
+    ),
+    "empty_block": (
+        "A block containing only `{ }` or `{ () }` is typically an unfinished placeholder. "
+        "Empty blocks in pub fn bodies mean the function silently returns unit, which may "
+        "not be the intended behavior and can hide missing implementations.",
+        "Implement the function body, or if the no-op is intentional, add a comment "
+        "explaining why the block is empty.",
+    ),
 }
 
 
@@ -698,14 +712,16 @@ def bmb_lint_native(source: str, filename: str = "snippet.bmb") -> dict:
     pattern-based checks without a full parse step, making it fast and
     suitable for AI-generated code review workflows.
 
-    Checks performed:
-        non_snake_case         — CamelCase function names
-        missing_postcondition  — pub fn without post contract
-        negated_if_condition   — `if not(...)` patterns (prefer positive form)
-        redundant_bool_compare — `== true` / `== false` patterns
-        chained_comparison     — 3+ or-linked equality comparisons (suggest match)
-        todo_comment           — // TODO or // FIXME (incomplete implementation)
-        missing_pre_index      — pub fn with idx/index param but no pre bounds clause
+    Checks performed (9 total, Cycles 2567-2579):
+        non_snake_case           — CamelCase function names
+        missing_postcondition    — pub fn without post contract
+        negated_if_condition     — `if not(...)` patterns (prefer positive form)
+        redundant_bool_compare   — `== true` / `== false` patterns
+        chained_comparison       — 3+ or-linked equality comparisons (suggest match)
+        todo_comment             — // TODO or // FIXME (incomplete implementation)
+        missing_pre_index        — pub fn with idx/index param but no pre bounds clause
+        redundant_if_expression  — `if cond { true } else { false }` single-line (Cycle 2579)
+        empty_block              — `{ }` or `{ () }` placeholder body (Cycle 2579)
 
     Args:
         source: BMB source code as a string.

@@ -166,12 +166,13 @@ def find_lint_native_binary() -> Path | None:
 
     exe_suffix = ".exe" if sys.platform == "win32" else ""
     binary = root / "bootstrap" / "lint" / f"lint{exe_suffix}"
-    if binary.is_file():
-        return binary
-
     src = root / "bootstrap" / "lint" / "lint.bmb"
     if not src.is_file():
         return None
+
+    # Return cached binary only if it's newer than the source.
+    if binary.is_file() and binary.stat().st_mtime >= src.stat().st_mtime:
+        return binary
 
     try:
         bmb_binary = find_bmb_binary()

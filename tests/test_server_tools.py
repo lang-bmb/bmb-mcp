@@ -296,6 +296,19 @@ def test_bmb_lint_explain_invalid_code():
     assert result["count"] == 0
 
 
+def test_bmb_lint_explain_explanations_dict_covers_new_kinds():
+    # Verify the explanations dict itself has entries for the new native-lint kinds.
+    # bmb_lint_explain uses the Rust lint, not lint.bmb, so these kinds won't appear
+    # in actual lint output here — but the dict must be populated for when they do.
+    from chatter.server import _LINT_EXPLANATIONS
+    assert "redundant_if_expression" in _LINT_EXPLANATIONS
+    assert "empty_block" in _LINT_EXPLANATIONS
+    r_exp, r_fix = _LINT_EXPLANATIONS["redundant_if_expression"]
+    assert len(r_exp) > 20 and len(r_fix) > 20
+    e_exp, e_fix = _LINT_EXPLANATIONS["empty_block"]
+    assert len(e_exp) > 20 and len(e_fix) > 20
+
+
 # ---------------------------------------------------------------------------
 # bmb_lint_native (Track Q Phase 2)
 # ---------------------------------------------------------------------------
@@ -387,6 +400,22 @@ def test_bmb_lint_native_pre_suppresses_missing_pre_index():
     assert result["ok"]
     kinds = [w["kind"] for w in result["warnings"]]
     assert "missing_pre_index" not in kinds
+
+
+def test_bmb_lint_native_detects_redundant_if_expression():
+    source = "fn is_positive(x: i64) -> bool = if x > 0 { true } else { false };\n"
+    result = bmb_lint_native(source)
+    assert result["ok"]
+    kinds = [w["kind"] for w in result["warnings"]]
+    assert "redundant_if_expression" in kinds
+
+
+def test_bmb_lint_native_detects_empty_block():
+    source = "pub fn stub(x: i64) -> i64 = { }\n"
+    result = bmb_lint_native(source)
+    assert result["ok"]
+    kinds = [w["kind"] for w in result["warnings"]]
+    assert "empty_block" in kinds
 
 
 # ---------------------------------------------------------------------------
