@@ -1,8 +1,8 @@
-"""Thin wrapper around the `bmb` CLI binary.
+"""Thin wrapper around the `bmb` CLI binary and ecosystem tools.
 
 Tools that need to invoke the BMB compiler (check, verify, compile, test)
-all go through this module so subprocess handling, timeout, and
-machine-output parsing live in one place.
+and ecosystem binaries (context_pack) all go through this module so subprocess
+handling, timeout, and machine-output parsing live in one place.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -78,6 +79,78 @@ def find_repo_root() -> Path | None:
         if (ancestor / "Cargo.toml").is_file():
             return ancestor
     return None
+
+
+def find_context_pack_binary() -> Path | None:
+    """Locate the context_pack native binary.
+
+    Checks {repo_root}/bootstrap/context_pack/context_pack[.exe].
+    If the binary is missing, attempts to build it with 'bmb build'.
+    Returns None if the binary cannot be found or built.
+    """
+    root = find_repo_root()
+    if root is None:
+        return None
+
+    exe_suffix = ".exe" if sys.platform == "win32" else ""
+    binary = root / "bootstrap" / "context_pack" / f"context_pack{exe_suffix}"
+    if binary.is_file():
+        return binary
+
+    # Binary missing — attempt to build it on demand
+    src = root / "bootstrap" / "context_pack" / "context_pack.bmb"
+    if not src.is_file():
+        return None
+
+    try:
+        bmb_binary = find_bmb_binary()
+    except BmbBinaryNotFound:
+        return None
+
+    result = subprocess.run(
+        [str(bmb_binary), "build", str(src), "-o", str(binary)],
+        capture_output=True,
+        text=True,
+        timeout=120.0,
+        check=False,
+    )
+    return binary if (result.returncode == 0 and binary.is_file()) else None
+
+
+def run_context_pack(root: str, max_tokens: int = 0, timeout: float = 30.0) -> BmbResult:
+    """Run the context_pack native binary against a directory.
+
+    Args:
+        root: Absolute path to the BMB project directory to scan.
+        max_tokens: Token budget (0 = no limit).
+        timeout: Subprocess timeout in seconds.
+
+    Returns a BmbResult. On binary-not-found, returns returncode=-1.
+    """
+    binary = find_context_pack_binary()
+    if binary is None:
+        return BmbResult(
+            returncode=-1,
+            stdout="",
+            stderr="context_pack binary not found and could not be built",
+        )
+
+    args = [str(binary), root]
+    if max_tokens > 0:
+        args += ["--max-tokens", str(max_tokens)]
+
+    proc = subprocess.run(
+        args,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    return BmbResult(
+        returncode=proc.returncode,
+        stdout=proc.stdout,
+        stderr=proc.stderr,
+    )
 
 
 def run_bmb(args: list[str], *, cwd: Path | None = None, timeout: float = 30.0) -> BmbResult:

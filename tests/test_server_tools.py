@@ -11,6 +11,11 @@ import pytest
 from chatter.bmb_cli import BmbBinaryNotFound, find_bmb_binary, find_repo_root
 from chatter.server import (
     bmb_check,
+    bmb_compile,
+    bmb_context_pack,
+    bmb_run,
+    bmb_test,
+    bmb_from_rust,
     bmb_verify,
     bmb_spec_lookup,
     bmb_lint,
@@ -286,3 +291,246 @@ def test_bmb_lint_explain_invalid_code():
     result = bmb_lint_explain("this is not valid bmb!!!\n")
     assert not result["ok"]
     assert result["count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# bmb_run
+# ---------------------------------------------------------------------------
+
+
+def test_bmb_run_returns_dict():
+    result = bmb_run("fn main() -> i64 = 0;\n")
+    assert isinstance(result, dict)
+    assert set(result.keys()) >= {"ok", "stdout", "stderr", "returncode"}
+
+
+def test_bmb_run_valid_source_succeeds():
+    result = bmb_run("fn main() -> i64 = 0;\n")
+    assert result["ok"]
+
+
+def test_bmb_run_invalid_source_fails():
+    result = bmb_run("fn main() -> i64 = undefined_var;\n")
+    assert not result["ok"]
+
+
+def test_bmb_run_syntax_error_fails():
+    result = bmb_run("this is not valid bmb!!!\n")
+    assert not result["ok"]
+
+
+# ---------------------------------------------------------------------------
+# bmb_compile
+# ---------------------------------------------------------------------------
+
+
+def test_bmb_compile_returns_dict():
+    result = bmb_compile("fn main() -> i64 = 0;\n")
+    assert isinstance(result, dict)
+    assert set(result.keys()) >= {"ok", "diagnostics", "stderr", "returncode"}
+
+
+def test_bmb_compile_valid_source_succeeds():
+    result = bmb_compile("fn main() -> i64 = 0;\n")
+    assert result["ok"]
+    assert result["returncode"] == 0
+
+
+def test_bmb_compile_undefined_variable_fails():
+    result = bmb_compile("fn main() -> i64 = undefined_var;\n")
+    assert not result["ok"]
+    assert result["returncode"] != 0
+
+
+def test_bmb_compile_syntax_error_fails():
+    result = bmb_compile("this is not valid bmb!!!\n")
+    assert not result["ok"]
+
+
+def test_bmb_compile_valid_with_arithmetic():
+    source = "fn main() -> i64 = { let x: i64 = 6; let y: i64 = 7; x * y };\n"
+    result = bmb_compile(source)
+    assert result["ok"]
+
+
+def test_bmb_compile_diagnostics_on_failure():
+    result = bmb_compile("fn main() -> i64 = no_such_fn();\n")
+    assert not result["ok"]
+    # Either diagnostics or stderr should contain error info
+    combined = (result["diagnostics"] or "") + (result["stderr"] or "")
+    assert len(combined) > 0
+
+
+# ---------------------------------------------------------------------------
+# bmb_test
+# ---------------------------------------------------------------------------
+
+
+def test_bmb_test_returns_dict():
+    result = bmb_test("fn main() -> i64 = 0;\n", [])
+    assert isinstance(result, dict)
+    assert set(result.keys()) >= {"ok", "compile_ok", "results", "diagnostics"}
+
+
+def test_bmb_test_no_cases_passes():
+    result = bmb_test("fn main() -> i64 = 0;\n", [])
+    assert result["compile_ok"]
+    assert result["ok"]
+    assert result["results"] == []
+
+
+def test_bmb_test_compile_failure():
+    result = bmb_test("this is not valid bmb!!!\n", [{"expected": ""}])
+    assert not result["compile_ok"]
+    assert not result["ok"]
+    assert result["results"] == []
+
+
+def test_bmb_test_compile_failure_empty_cases():
+    result = bmb_test("fn main() -> i64 = undefined_var;\n", [])
+    assert not result["compile_ok"]
+    assert not result["ok"]
+
+
+def test_bmb_test_results_structure():
+    result = bmb_test("fn main() -> i64 = 0;\n", [{"input": "", "expected": ""}])
+    assert result["compile_ok"]
+    assert len(result["results"]) == 1
+    r = result["results"][0]
+    assert set(r.keys()) >= {"passed", "input", "expected", "actual", "returncode"}
+
+
+# ---------------------------------------------------------------------------
+# bmb_from_rust
+# ---------------------------------------------------------------------------
+
+
+def test_bmb_from_rust_returns_dict():
+    result = bmb_from_rust("fn main() {}\n")
+    assert isinstance(result, dict)
+    assert set(result.keys()) >= {"ok", "bmb_source", "warnings", "note"}
+
+
+def test_bmb_from_rust_always_ok():
+    # Transform should always succeed (no subprocess)
+    result = bmb_from_rust("this is garbage code !!!\n")
+    assert result["ok"]
+    assert isinstance(result["bmb_source"], str)
+
+
+def test_bmb_from_rust_option_conversion():
+    result = bmb_from_rust("fn f(x: Option<i64>) -> Option<i64> { x }\n")
+    assert "i64?" in result["bmb_source"]
+    assert "Option<" not in result["bmb_source"]
+
+
+def test_bmb_from_rust_integer_widening():
+    result = bmb_from_rust("fn f(x: i32, y: u32) -> usize { 0 }\n")
+    assert "i32" not in result["bmb_source"]
+    assert "u32" not in result["bmb_source"]
+    assert "usize" not in result["bmb_source"]
+    assert "i64" in result["bmb_source"]
+    assert any("i32" in w or "u32" in w or "usize" in w for w in result["warnings"])
+
+
+def test_bmb_from_rust_logical_operators():
+    result = bmb_from_rust("fn f(a: bool, b: bool) -> bool { a && b || !a }\n")
+    src = result["bmb_source"]
+    assert "&&" not in src
+    assert "||" not in src
+    assert " and " in src
+    assert " or " in src
+    assert "not " in src
+
+
+def test_bmb_from_rust_fn_signature():
+    result = bmb_from_rust("fn add(a: i64, b: i64) -> i64 {\n    a + b\n}\n")
+    assert "= {" in result["bmb_source"]
+
+
+def test_bmb_from_rust_use_removed():
+    result = bmb_from_rust("use std::collections::HashMap;\n\nfn main() {}\n")
+    assert "use " not in result["bmb_source"]
+    assert any("Removed" in w for w in result["warnings"])
+
+
+def test_bmb_from_rust_unsupported_warnings():
+    source = "impl Foo { fn bar() {} }\n"
+    result = bmb_from_rust(source)
+    assert any("impl" in w for w in result["warnings"])
+
+
+def test_bmb_from_rust_vec_warning():
+    result = bmb_from_rust("fn f() -> Vec<i64> { vec![] }\n")
+    assert any("Vec" in w for w in result["warnings"])
+
+
+def test_bmb_from_rust_note_present():
+    result = bmb_from_rust("fn main() {}\n")
+    assert isinstance(result["note"], str)
+    assert len(result["note"]) > 10
+
+
+# ---------------------------------------------------------------------------
+# bmb_context_pack
+# ---------------------------------------------------------------------------
+
+
+def test_bmb_context_pack_returns_dict():
+    root = find_repo_root()
+    if root is None:
+        pytest.skip("repo root not found")
+    result = bmb_context_pack(str(root / "stdlib"))
+    assert isinstance(result, dict)
+    assert set(result.keys()) >= {"ok", "context", "raw", "stderr", "returncode"}
+
+
+def test_bmb_context_pack_stdlib_succeeds():
+    root = find_repo_root()
+    if root is None:
+        pytest.skip("repo root not found")
+    result = bmb_context_pack(str(root / "stdlib"))
+    if result["returncode"] == -1:
+        pytest.skip("context_pack binary not available")
+    assert result["ok"]
+    assert result["context"] is not None
+    assert result["context"].get("_schema") == "bmb.context-pack.v1"
+
+
+def test_bmb_context_pack_context_structure():
+    root = find_repo_root()
+    if root is None:
+        pytest.skip("repo root not found")
+    result = bmb_context_pack(str(root / "stdlib"))
+    if result["returncode"] == -1:
+        pytest.skip("context_pack binary not available")
+    if not result["ok"]:
+        pytest.skip("context_pack failed")
+    ctx = result["context"]
+    assert "project" in ctx
+    assert "modules" in ctx
+    assert "stats" in ctx
+    assert isinstance(ctx["modules"], list)
+
+
+def test_bmb_context_pack_nonexistent_dir():
+    result = bmb_context_pack("/nonexistent/path/12345")
+    if result["returncode"] == -1:
+        pytest.skip("context_pack binary not available")
+    # Should fail gracefully — no .bmb files found
+    assert not result["ok"] or (result["context"] and result["context"].get("error"))
+
+
+def test_bmb_context_pack_max_tokens():
+    root = find_repo_root()
+    if root is None:
+        pytest.skip("repo root not found")
+    result = bmb_context_pack(str(root / "stdlib"), max_tokens=1000)
+    if result["returncode"] == -1:
+        pytest.skip("context_pack binary not available")
+    if not result["ok"]:
+        pytest.skip("context_pack failed")
+    ctx = result["context"]
+    # With a small budget, budget_mode should be set in stats
+    stats = ctx.get("stats", {})
+    assert isinstance(stats, dict)

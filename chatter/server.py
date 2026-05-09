@@ -3,24 +3,29 @@
 Implements Track N Phase 2 tools, resources, and prompts per README.md:
 
   - tools:     bmb_check, bmb_verify, bmb_spec_lookup, bmb_lint, bmb_example,
-               bmb_lint_explain (Track Q: AI-friendly lint explanations)
+               bmb_lint_explain (Track Q: AI-friendly lint explanations),
+               bmb_compile, bmb_test, bmb_from_rust (Track N Phase 2d)
   - resources: bmb://spec/full, bmb://spec/quick-reference, bmb://spec/rust-diff
   - prompts:   bmb_implement, bmb_add_contracts, bmb_optimize
-
-Remaining tools (bmb_compile, bmb_test, bmb_from_rust) are tracked under
-Track N Phase 3+.
 """
 
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from .bmb_cli import BmbBinaryNotFound, find_bmb_binary, find_repo_root, run_bmb
+from .bmb_cli import (
+    BmbBinaryNotFound,
+    find_bmb_binary,
+    find_repo_root,
+    run_bmb,
+    run_context_pack,
+)
 
 
 mcp = FastMCP("bmb-chatter")
@@ -188,6 +193,336 @@ def bmb_example(concept: str, max_examples: int = 2) -> dict:
         "ok": True,
         "examples": matches[:max_examples],
         "total_matches": len(matches),
+    }
+
+
+@mcp.tool()
+def bmb_run(source: str, filename: str = "snippet.bmb", stdin: str = "") -> dict:
+    """Run a BMB source snippet using the tree-walking interpreter.
+
+    Faster than bmb_compile (no LLVM pass) — useful for quick evaluation,
+    logic checks, and testing pure-computation snippets. Does not support
+    all language features that compilation does (e.g. SIMD, certain casts).
+
+    Args:
+        source: BMB source code as a string.
+        filename: Display name for diagnostics (default: snippet.bmb).
+        stdin: String to supply on the interpreter's standard input (default "").
+
+    Returns a dict with keys:
+        ok: bool — True if interpreter ran successfully (exit 0)
+        stdout: interpreter standard output
+        stderr: any error stream content
+        returncode: bmb exit code
+    """
+    import subprocess as _sub
+
+    with tempfile.TemporaryDirectory(prefix="chatter-run-") as tmp:
+        tmp_path = Path(tmp) / filename
+        tmp_path.write_text(source, encoding="utf-8")
+        binary = find_bmb_binary()
+        proc = _sub.run(
+            [str(binary), "run", str(tmp_path)],
+            input=stdin,
+            capture_output=True,
+            text=True,
+            timeout=30.0,
+            check=False,
+        )
+    return {
+        "ok": proc.returncode == 0,
+        "stdout": proc.stdout,
+        "stderr": proc.stderr,
+        "returncode": proc.returncode,
+    }
+
+
+@mcp.tool()
+def bmb_compile(source: str, filename: str = "snippet.bmb", optimize: bool = True) -> dict:
+    """Compile a BMB source snippet to a native executable.
+
+    Builds the source using 'bmb build' and reports whether compilation
+    succeeded. The compiled binary is not retained after this call; use
+    bmb_test to compile-and-run in a single step.
+
+    Args:
+        source: BMB source code as a string.
+        filename: Display name used for the temporary source file (default: snippet.bmb).
+        optimize: Whether to request an optimized build (default: True).
+                  Currently passed as-is; the bmb compiler uses its default opt level.
+
+    Returns a dict with keys:
+        ok: bool — True if compilation succeeded
+        diagnostics: stdout from bmb build (JSON build_success or error)
+        stderr: any error stream content
+        returncode: bmb exit code
+    """
+    exe_suffix = ".exe" if sys.platform == "win32" else ""
+    stem = Path(filename).stem
+    with tempfile.TemporaryDirectory(prefix="chatter-compile-") as tmp:
+        src_path = Path(tmp) / filename
+        out_path = Path(tmp) / (stem + exe_suffix)
+        src_path.write_text(source, encoding="utf-8")
+        result = run_bmb(["build", str(src_path), "-o", str(out_path)], timeout=60.0)
+    return {
+        "ok": result.ok,
+        "diagnostics": result.stdout,
+        "stderr": result.stderr,
+        "returncode": result.returncode,
+    }
+
+
+@mcp.tool()
+def bmb_test(
+    source: str,
+    test_cases: list,
+    filename: str = "snippet.bmb",
+) -> dict:
+    """Compile a BMB source snippet and run test cases against it.
+
+    Each test case is a dict with:
+        input:    string to supply on stdin (optional, default "")
+        expected: expected stdout output (default "")
+
+    Compiles once, then runs the binary for each test case in sequence.
+    The compiled binary is removed after the call.
+
+    Args:
+        source: BMB source code as a string.
+        test_cases: List of test-case dicts (see above).
+        filename: Display name for the temporary source file (default: snippet.bmb).
+
+    Returns a dict with keys:
+        ok: bool — True if all test cases passed (False if compile failed)
+        compile_ok: bool
+        diagnostics: compilation stdout/stderr
+        results: list of per-test dicts, each with:
+            passed: bool
+            input: str
+            expected: str
+            actual: str
+            returncode: int
+    """
+    exe_suffix = ".exe" if sys.platform == "win32" else ""
+    stem = Path(filename).stem
+    with tempfile.TemporaryDirectory(prefix="chatter-test-") as tmp:
+        src_path = Path(tmp) / filename
+        out_path = Path(tmp) / (stem + exe_suffix)
+        src_path.write_text(source, encoding="utf-8")
+
+        compile_result = run_bmb(
+            ["build", str(src_path), "-o", str(out_path)], timeout=60.0
+        )
+        if not compile_result.ok:
+            return {
+                "ok": False,
+                "compile_ok": False,
+                "diagnostics": compile_result.stdout + compile_result.stderr,
+                "results": [],
+            }
+
+        results = []
+        all_passed = True
+        for case in test_cases:
+            input_data = case.get("input", "")
+            expected = case.get("expected", "")
+            try:
+                proc = subprocess.run(
+                    [str(out_path)],
+                    input=input_data,
+                    capture_output=True,
+                    text=True,
+                    timeout=10.0,
+                )
+                actual = proc.stdout
+                passed = actual == expected
+            except subprocess.TimeoutExpired:
+                actual = ""
+                passed = False
+                proc = None
+            all_passed = all_passed and passed
+            results.append(
+                {
+                    "passed": passed,
+                    "input": input_data,
+                    "expected": expected,
+                    "actual": actual,
+                    "returncode": proc.returncode if proc is not None else -1,
+                }
+            )
+
+    return {
+        "ok": all_passed,
+        "compile_ok": True,
+        "diagnostics": compile_result.stdout,
+        "results": results,
+    }
+
+
+@mcp.tool()
+def bmb_context_pack(root: str, max_tokens: int = 0) -> dict:
+    """Generate a context pack for a BMB project directory.
+
+    Runs the context_pack native binary to scan all .bmb files under `root`
+    and produce a structured JSON summary of public exports, contracts, and
+    module structure. Suitable for feeding to an LLM as project context.
+
+    The context-pack v1 schema:
+        _schema: "bmb.context-pack.v1"
+        project: {name, root}
+        modules: [{path, kind, exports: [{name, kind, signature, contract}], lines}]
+        stats: {total_modules, total_exports, estimated_tokens}
+
+    When max_tokens is set and the pack exceeds the budget, contract details are
+    stripped and stats gains "budget_mode" and "budget_tokens" fields.
+
+    Args:
+        root: Path to the BMB project directory to scan (absolute preferred).
+        max_tokens: Token budget — strip contracts if over budget (0 = no limit).
+
+    Returns a dict with keys:
+        ok: bool
+        context: parsed context-pack dict (or None on failure)
+        raw: raw stdout from context_pack binary
+        stderr: any error stream content
+        returncode: exit code (-1 if binary not found)
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    abs_root = str(_Path(root).resolve())
+    result = run_context_pack(abs_root, max_tokens=max_tokens)
+
+    context = None
+    if result.ok and result.stdout:
+        try:
+            context = _json.loads(result.stdout)
+        except _json.JSONDecodeError:
+            pass
+
+    return {
+        "ok": result.ok,
+        "context": context,
+        "raw": result.stdout,
+        "stderr": result.stderr,
+        "returncode": result.returncode,
+    }
+
+
+def _transform_rust_to_bmb(source: str) -> tuple[str, list[str]]:
+    """Heuristic Rust-to-BMB text transformation.
+
+    Applies common substitutions and detects unsupported constructs.
+    The output is a best-effort starting point — review before use.
+    Returns (bmb_source, warnings).
+    """
+    warnings: list[str] = []
+    result = source
+
+    # 1. Remove `use` statements — BMB has no module imports
+    def _remove_use(m: re.Match) -> str:
+        warnings.append(
+            f"Removed: `{m.group().strip()}` — BMB has no module imports"
+        )
+        return ""
+
+    result = re.sub(r"^[ \t]*use [^;]+;\n?", _remove_use, result, flags=re.MULTILINE)
+
+    # 2. Integer type widening → i64 (BMB primary integer type)
+    _INT_TYPES = ("i32", "u32", "usize", "isize", "u64", "u8", "i8", "i16", "u16", "i128")
+    for rust_type in _INT_TYPES:
+        if re.search(rf"\b{rust_type}\b", result):
+            result = re.sub(rf"\b{rust_type}\b", "i64", result)
+            warnings.append(f"Widened `{rust_type}` → `i64` (BMB uses i64 for integers)")
+
+    # 3. &str → String
+    if re.search(r"\b&str\b", result):
+        result = re.sub(r"\b&str\b", "String", result)
+        warnings.append("Converted `&str` → `String`")
+
+    # 4. Option<T> → T?
+    result = re.sub(r"\bOption<([^>]+)>", lambda m: m.group(1).strip() + "?", result)
+
+    # 5. Logical operators
+    result = result.replace("&&", " and ")
+    result = result.replace("||", " or ")
+
+    # 6. Logical NOT: `!expr` → `not expr` (skip `!=`)
+    result = re.sub(r"!(?!=)", "not ", result)
+
+    # 7. Function signatures: `fn name(…) {` → `fn name(…) = {`
+    #    Per-line, only on lines starting with optional ws + `fn` or `pub fn`
+    result = re.sub(
+        r"^([ \t]*(?:pub\s+)?(?:async\s+)?fn\s+[^{]+)\{",
+        r"\1= {",
+        result,
+        flags=re.MULTILINE,
+    )
+
+    # 8. `return expr;` → `expr` (last-expression-is-return in BMB)
+    result = re.sub(r"\breturn\s+([^;]+);", r"\1", result)
+
+    # 9. Detect unsupported constructs (warn but don't transform)
+    _unsupported = [
+        (r"\bimpl\b", "Unsupported: `impl` blocks — BMB has no trait system"),
+        (r"for\s+\w+\s+in\s+", "Unsupported: `for…in` loops — use `while` or recursion"),
+        (r"\bVec<", "Unsupported: `Vec<T>` — use fixed arrays `[T; N]`"),
+        (r"\bNone\b", "Unsupported: `None` literal — BMB uses nullable T? but no None keyword"),
+        (r"\bSome\(", "Note: `Some(x)` — BMB uses `x` directly (T? is nullable, not Option<T>)"),
+        (r"let\s*\(", "Unsupported: tuple destructuring `let (a, b) = …` — not in BMB"),
+        (r"\|\s*\w+\s*\|", "Unsupported: closures `|x| …` — BMB has no first-class functions"),
+        (r"_\s*=>", "Unsupported: `_ =>` wildcard match arm — use explicit cases in BMB"),
+        (r"::", "Note: `::` static calls — not in BMB; call functions directly"),
+        (r"\btrait\b", "Unsupported: `trait` definitions — BMB has no trait system"),
+        (r"'[a-z]\b", "Note: Rust lifetime annotations — not needed in BMB"),
+        (r"\bBox<", "Unsupported: `Box<T>` — BMB uses ownership without heap boxing"),
+        (r"\bRc<|\bArc<", "Unsupported: `Rc`/`Arc` — BMB ownership model differs"),
+        (r"\basync\s+fn\b|\bawait\b", "Unsupported: async/await — BMB has no async support"),
+    ]
+    for pattern, msg in _unsupported:
+        if re.search(pattern, result):
+            warnings.append(msg)
+
+    return result, warnings
+
+
+@mcp.tool()
+def bmb_from_rust(rust_source: str) -> dict:
+    """Convert Rust source code to idiomatic BMB (best-effort heuristic).
+
+    Applies common syntactic transformations and flags constructs that have
+    no direct BMB equivalent. The output is a starting point — it will
+    almost certainly need manual review and adjustment.
+
+    Transformations applied:
+    - `use` statements removed (no module imports in BMB)
+    - Integer types widened to `i64` (i32, u32, usize, …)
+    - `&str` → `String`
+    - `Option<T>` → `T?`
+    - `&&` / `||` / `!` → `and` / `or` / `not`
+    - Function bodies: `fn f() -> T {` → `fn f() -> T = {`
+    - `return expr;` → `expr` (BMB uses last-expression)
+
+    Unsupported constructs are flagged in the `warnings` list.
+
+    Args:
+        rust_source: Rust source code as a string.
+
+    Returns a dict with keys:
+        ok: bool — always True (transformation always produces output)
+        bmb_source: transformed BMB source (best-effort, may not compile)
+        warnings: list of transformation notes and unsupported-construct warnings
+        note: reminder that output requires manual review
+    """
+    bmb_source, warnings = _transform_rust_to_bmb(rust_source)
+    return {
+        "ok": True,
+        "bmb_source": bmb_source,
+        "warnings": warnings,
+        "note": (
+            "This is a heuristic transformation. The output is a starting point "
+            "and will likely require manual fixes. Use bmb_check to validate."
+        ),
     }
 
 
