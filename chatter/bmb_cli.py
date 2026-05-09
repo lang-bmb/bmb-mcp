@@ -153,6 +153,72 @@ def run_context_pack(root: str, max_tokens: int = 0, timeout: float = 30.0) -> B
     )
 
 
+def find_lint_native_binary() -> Path | None:
+    """Locate the lint native binary (bootstrap/lint/lint[.exe]).
+
+    Checks {repo_root}/bootstrap/lint/lint[.exe].
+    If missing, attempts to build it from bootstrap/lint/lint.bmb.
+    Returns None if binary cannot be found or built.
+    """
+    root = find_repo_root()
+    if root is None:
+        return None
+
+    exe_suffix = ".exe" if sys.platform == "win32" else ""
+    binary = root / "bootstrap" / "lint" / f"lint{exe_suffix}"
+    if binary.is_file():
+        return binary
+
+    src = root / "bootstrap" / "lint" / "lint.bmb"
+    if not src.is_file():
+        return None
+
+    try:
+        bmb_binary = find_bmb_binary()
+    except BmbBinaryNotFound:
+        return None
+
+    result = subprocess.run(
+        [str(bmb_binary), "build", str(src), "-o", str(binary)],
+        capture_output=True,
+        text=True,
+        timeout=120.0,
+        check=False,
+    )
+    return binary if (result.returncode == 0 and binary.is_file()) else None
+
+
+def run_lint_native(path: str, timeout: float = 30.0) -> BmbResult:
+    """Run the BMB-native lint binary against a single .bmb file.
+
+    Args:
+        path: Absolute path to the .bmb file to lint.
+        timeout: Subprocess timeout in seconds.
+
+    Returns a BmbResult.
+    """
+    binary = find_lint_native_binary()
+    if binary is None:
+        return BmbResult(
+            returncode=-1,
+            stdout="",
+            stderr="lint native binary not found and could not be built",
+        )
+
+    proc = subprocess.run(
+        [str(binary), path],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    return BmbResult(
+        returncode=proc.returncode,
+        stdout=proc.stdout,
+        stderr=proc.stderr,
+    )
+
+
 def run_bmb(args: list[str], *, cwd: Path | None = None, timeout: float = 30.0) -> BmbResult:
     """Invoke `bmb <args>` and capture stdout/stderr. The default output
     format is machine-friendly (CLAUDE.md Rule 8) — callers requesting

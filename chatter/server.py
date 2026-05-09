@@ -4,6 +4,7 @@ Implements Track N Phase 2 tools, resources, and prompts per README.md:
 
   - tools:     bmb_check, bmb_verify, bmb_spec_lookup, bmb_lint, bmb_example,
                bmb_lint_explain (Track Q: AI-friendly lint explanations),
+               bmb_lint_native (Track Q Phase 2: BMB-native pattern-based lint),
                bmb_compile, bmb_test, bmb_from_rust (Track N Phase 2d)
   - resources: bmb://spec/full, bmb://spec/quick-reference, bmb://spec/rust-diff
   - prompts:   bmb_implement, bmb_add_contracts, bmb_optimize
@@ -25,6 +26,7 @@ from .bmb_cli import (
     find_repo_root,
     run_bmb,
     run_context_pack,
+    run_lint_native,
 )
 
 
@@ -682,6 +684,58 @@ def bmb_lint_explain(source: str, filename: str = "snippet.bmb") -> dict:
 
     return {
         "ok": result.ok,
+        "warnings": warnings,
+        "count": len(warnings),
+        "stderr": result.stderr,
+    }
+
+
+@mcp.tool()
+def bmb_lint_native(source: str, filename: str = "snippet.bmb") -> dict:
+    """Run the BMB-native lint tool (bootstrap/lint/lint.exe) on a source snippet.
+
+    This is the Track Q Phase 2 BMB-native lint implementation. It runs
+    pattern-based checks without a full parse step, making it fast and
+    suitable for AI-generated code review workflows.
+
+    Checks performed:
+        non_snake_case         — CamelCase function names
+        missing_postcondition  — pub fn without post contract
+        negated_if_condition   — `if not(...)` patterns (prefer positive form)
+        redundant_bool_compare — `== true` / `== false` patterns
+        chained_comparison     — 3+ or-linked equality comparisons (suggest match)
+
+    Args:
+        source: BMB source code as a string.
+        filename: Display name for diagnostics (default: snippet.bmb).
+
+    Returns a dict with keys:
+        ok: bool — True if lint runs successfully (exit 0)
+        warnings: list of dicts parsed from JSON warning lines
+        count: number of warnings
+        stderr: any error stream content
+    """
+    import json as _json
+
+    with tempfile.TemporaryDirectory(prefix="chatter-lint-native-") as tmp:
+        tmp_path = Path(tmp) / filename
+        tmp_path.write_text(source, encoding="utf-8")
+        result = run_lint_native(str(tmp_path))
+
+    warnings = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = _json.loads(line)
+            if obj.get("type") == "warning":
+                warnings.append(obj)
+        except _json.JSONDecodeError:
+            pass
+
+    return {
+        "ok": result.returncode == 0,
         "warnings": warnings,
         "count": len(warnings),
         "stderr": result.stderr,

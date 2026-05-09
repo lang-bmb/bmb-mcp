@@ -21,6 +21,7 @@ from chatter.server import (
     bmb_spec_lookup,
     bmb_lint,
     bmb_lint_explain,
+    bmb_lint_native,
     bmb_example,
     bmb_implement,
     bmb_add_contracts,
@@ -293,6 +294,67 @@ def test_bmb_lint_explain_invalid_code():
     result = bmb_lint_explain("this is not valid bmb!!!\n")
     assert not result["ok"]
     assert result["count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# bmb_lint_native (Track Q Phase 2)
+# ---------------------------------------------------------------------------
+
+
+def test_bmb_lint_native_returns_dict():
+    result = bmb_lint_native("fn main() -> i64 = 0;\n")
+    assert isinstance(result, dict)
+    assert set(result.keys()) >= {"ok", "warnings", "count", "stderr"}
+
+
+def test_bmb_lint_native_clean_code_zero_warnings():
+    source = "pub fn add(a: i64, b: i64) -> i64\npost ret == a + b\n= a + b;\n"
+    result = bmb_lint_native(source)
+    assert result["ok"]
+    assert result["count"] == 0
+
+
+def test_bmb_lint_native_detects_non_snake_case():
+    result = bmb_lint_native("fn myBadName(x: i64) -> i64 = x;\n")
+    assert result["ok"]
+    kinds = [w["kind"] for w in result["warnings"]]
+    assert "non_snake_case" in kinds
+
+
+def test_bmb_lint_native_detects_missing_postcondition():
+    result = bmb_lint_native("pub fn helper(n: i64) -> i64 = n + 1;\n")
+    assert result["ok"]
+    kinds = [w["kind"] for w in result["warnings"]]
+    assert "missing_postcondition" in kinds
+
+
+def test_bmb_lint_native_detects_negated_if():
+    source = "fn check(x: bool) -> i64 = if not(x) { 1 } else { 0 };\n"
+    result = bmb_lint_native(source)
+    assert result["ok"]
+    kinds = [w["kind"] for w in result["warnings"]]
+    assert "negated_if_condition" in kinds
+
+
+def test_bmb_lint_native_detects_redundant_bool():
+    source = "fn check(x: bool) -> i64 = if x == true { 1 } else { 0 };\n"
+    result = bmb_lint_native(source)
+    assert result["ok"]
+    kinds = [w["kind"] for w in result["warnings"]]
+    assert "redundant_bool_comparison" in kinds
+
+
+def test_bmb_lint_native_detects_chained_comparison():
+    source = "fn is_bracket(c: i64) -> bool = c == 40 or c == 41 or c == 91 or c == 93;\n"
+    result = bmb_lint_native(source)
+    assert result["ok"]
+    kinds = [w["kind"] for w in result["warnings"]]
+    assert "chained_comparison" in kinds
+
+
+def test_bmb_lint_native_count_matches_warnings():
+    result = bmb_lint_native("fn badName(x: i64) -> i64 = x;\n")
+    assert result["count"] == len(result["warnings"])
 
 
 # ---------------------------------------------------------------------------
