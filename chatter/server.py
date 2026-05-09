@@ -782,6 +782,29 @@ def spec_rust_diff() -> str:
     return _RUST_DIFF
 
 
+@mcp.resource("bmb://context/stdlib")
+def context_stdlib() -> str:
+    """Context pack for the BMB standard library — all public exports and contracts.
+
+    Returns context-pack v1 JSON listing every public function, type, and
+    constant in stdlib/ with their signatures and pre/post contracts.
+    Use this to find available stdlib functions before writing BMB code.
+    """
+    import json as _json
+
+    root = find_repo_root()
+    if root is None:
+        return _json.dumps({"error": "BMB repository root not found"})
+    stdlib_root = root / "stdlib"
+    if not stdlib_root.is_dir():
+        return _json.dumps({"error": f"{stdlib_root} directory not found"})
+
+    result = run_context_pack(str(stdlib_root))
+    if not result.ok:
+        return _json.dumps({"error": result.stderr or "context_pack failed"})
+    return result.stdout
+
+
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------

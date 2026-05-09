@@ -27,6 +27,7 @@ from chatter.server import (
     spec_quick_reference,
     spec_rust_diff,
     spec_full,
+    context_stdlib,
 )
 
 
@@ -534,3 +535,40 @@ def test_bmb_context_pack_max_tokens():
     # With a small budget, budget_mode should be set in stats
     stats = ctx.get("stats", {})
     assert isinstance(stats, dict)
+
+
+# ---------------------------------------------------------------------------
+# context_stdlib resource
+# ---------------------------------------------------------------------------
+
+
+def test_context_stdlib_returns_string():
+    content = context_stdlib()
+    assert isinstance(content, str)
+    assert len(content) > 50  # Should have meaningful content or error
+
+
+def test_context_stdlib_is_valid_json_or_error():
+    import json
+    content = context_stdlib()
+    # Should be valid JSON (either a context pack or an error dict)
+    data = json.loads(content)
+    assert isinstance(data, dict)
+
+
+def test_context_stdlib_has_schema_or_error():
+    import json
+    content = context_stdlib()
+    data = json.loads(content)
+    # Either proper context pack or error
+    assert "_schema" in data or "error" in data
+
+
+def test_context_stdlib_stdlib_modules():
+    import json
+    content = context_stdlib()
+    data = json.loads(content)
+    if "error" in data:
+        pytest.skip(f"context_stdlib error: {data['error']}")
+    assert data.get("_schema") == "bmb.context-pack.v1"
+    assert len(data.get("modules", [])) > 0

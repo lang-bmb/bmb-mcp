@@ -4,9 +4,9 @@
 
 Chatter enables AI models to generate high-quality BMB code by providing real-time access to language specifications, compilation feedback, and contract verification.
 
-> **Implementation status (2026-05-09, Cycles 2524–2553):** Python scaffold in `chatter/`. 65/65 pytest passing.
+> **Implementation status (2026-05-09, Cycles 2524–2554):** Python scaffold in `chatter/`. 69/69 pytest passing.
 > - ✅ Tools (11): `bmb_check`, `bmb_run`, `bmb_verify`, `bmb_spec_lookup`, `bmb_lint`, `bmb_lint_explain`, `bmb_example`, `bmb_compile`, `bmb_test`, `bmb_from_rust`, `bmb_context_pack`
-> - ✅ Resources: `bmb://spec/full`, `bmb://spec/quick-reference`, `bmb://spec/rust-diff`
+> - ✅ Resources (4): `bmb://spec/full`, `bmb://spec/quick-reference`, `bmb://spec/rust-diff`, `bmb://context/stdlib`
 > - ✅ Prompts: `bmb_implement`, `bmb_add_contracts`, `bmb_optimize`
 >
 > Long-term (M3+) the implementation moves to BMB itself per the Rule 6 BMB-rewrite policy. The Python layer is intentionally thin to keep that port small.
@@ -77,8 +77,9 @@ Instead of stuffing the entire specification into every prompt (~15K tokens), Ch
 | `bmb://spec/full` | ✅ | Complete language specification (docs/SPECIFICATION.md) |
 | `bmb://spec/quick-reference` | ✅ | Cheatsheet: syntax, contracts, gotchas, stdlib |
 | `bmb://spec/rust-diff` | ✅ | BMB vs Rust: philosophy, syntax, memory model |
+| `bmb://context/stdlib` | ✅ | Context pack for stdlib/ — all public exports + contracts |
 | `bmb://examples/{category}` | ⏳ | Example code by category |
-| `bmb://stdlib/{module}` | ⏳ | Standard library documentation |
+| `bmb://stdlib/{module}` | ⏳ | Standard library documentation per module |
 
 ### Prompts
 
